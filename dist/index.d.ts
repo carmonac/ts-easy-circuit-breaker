@@ -26,7 +26,7 @@ declare class CircuitBreaker extends EventEmitter {
     private readonly timeWindow;
     private readonly resetTimeout;
     constructor(options: CircuitBreakerOptions, initialState?: CircuitBreakerState);
-    execute<T>(fn: () => Promise<T>): Promise<T>;
+    execute<T>(fn: (...args: any[]) => Promise<T>, ...args: any[]): Promise<T>;
     private onSuccess;
     private onFailure;
     private isThresholdExceeded;

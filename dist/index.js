@@ -41,7 +41,7 @@ class CircuitBreaker extends events_1.default {
             this.nextAttempt = 0;
         }
     }
-    execute(fn) {
+    execute(fn, ...args) {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.state === CircuitState.OPEN) {
                 if (Date.now() < this.nextAttempt) {
@@ -51,7 +51,7 @@ class CircuitBreaker extends events_1.default {
                 this.toHalfOpen();
             }
             try {
-                const result = yield fn();
+                const result = yield fn(...args);
                 this.onSuccess();
                 return result;
             }
