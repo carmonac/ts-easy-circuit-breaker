@@ -1,5 +1,5 @@
 import http from "http";
-import { CircuitBreaker, CircuitBreakerOptions } from "./index";
+import { CircuitBreaker, CircuitBreakerOptions } from "./src/index";
 import axios from "axios";
 
 const circuitBreakerOptions: CircuitBreakerOptions = {
