@@ -54,7 +54,10 @@ class CircuitBreaker extends EventEmitter {
     }
   }
 
-  async execute<T>(fn: () => Promise<T>): Promise<T> {
+  async execute<T>(
+    fn: (...args: any[]) => Promise<T>,
+    ...args: any[]
+  ): Promise<T> {
     if (this.state === CircuitState.OPEN) {
       if (Date.now() < this.nextAttempt) {
         this.emit("openCircuit");
@@ -64,7 +67,7 @@ class CircuitBreaker extends EventEmitter {
     }
 
     try {
-      const result = await fn();
+      const result = await fn(...args);
       this.onSuccess();
       return result;
     } catch (error) {
