@@ -1,26 +1,35 @@
 {
   "name": "ts-easy-circuit-breaker",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
     "test": "jest"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "circuit-breaker",
+    "typescript",
+    "pattern"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carmonac/ts-easy-circuit-breaker"
+  },
+  "author": "Carlos Merchán Carmona",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/carmonac/ts-easy-circuit-breaker/issues"
+  },
+  "homepage": "https://github.com/carmonac/ts-easy-circuit-breaker#readme",
   "description": "",
   "devDependencies": {
+    "axios": "^1.7.2",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.14.9",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.2"
-  },
-  "dependencies": {
-    "axios": "^1.7.2"
   }
 }
