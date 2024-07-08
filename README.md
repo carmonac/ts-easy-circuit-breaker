@@ -1,117 +1,229 @@
-# TS Easy Circuit Breaker
+# ts-easy-circuit-breaker
 
-A Circuit Breaker implementation in TypeScript that helps manage service resilience by handling failures and avoiding system overload.
+A lightweight and easy-to-use Circuit Breaker implementation in TypeScript.
 
-## Features
+## Table of Contents
 
-- **Circuit Breaker States**: `CLOSED`, `OPEN`, `HALF_OPEN`
-- **Configuration**: Allows adjusting the failure threshold, time window, and reset timeout.
-- **Events**: Emits events on state changes and when recording successes or failures.
-- **Stateless Environment Support**: Can initialize with the state from another Circuit Breaker instance.
-
-## Logic
-
-- **State Initialization**: The Circuit Breaker can be initialized with the state from a previous Circuit Breaker. This is crucial for AWS Lambda environments where the state needs to be shared across multiple instances simultaneously. (This implementation omits the Redis part for state sharing.)
-- **State Export**: The Circuit Breaker has a method called exportState that exports all necessary parameters to recreate the Circuit Breaker in another instance.
-- **Time Window Management**: Upon receiving the first error, the Circuit Breaker starts a time window (defined by timeWindow).
-- **Counting Attempts and Failures**: While the time window is open, the Circuit Breaker counts the number of attempts and failures.
-- **Failure Threshold Calculation**: After the time window expires, the Circuit Breaker calculates the percentage of errors. If this percentage exceeds the predefined threshold (failureThreshold), the circuit opens.
-- **Open State and Reset Timeout**: When the circuit is open, it remains in this state for a specified period (resetTimeout). During this time, the function to be executed is not run.
-- **Transition to Half-Open State**: After the resetTimeout period, the circuit transitions to a half-open state. In this state:
-  - If the next function execution succeeds without errors, the circuit closes, resetting the process and waiting for a new error to reopen the time window.
-  - If the next function execution fails, the circuit reopens and waits for the resetTimeout period again.
-- **Event Emission**: The Circuit Breaker emits events for each state change or action, including failure, half open, success, open circuit, close circuit, etc. This allows for monitoring and reacting to state changes.
+- [Installation](#installation)
+- [Usage](#usage)
+- [API](#api)
+- [Configuration](#configuration)
+- [Initial State and Serverless Environments](#initial-state-and-serverless-environments)
+- [Events](#events)
+- [Examples](#examples)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Installation
 
-First, make sure you have Node.js installed. Then, install the dependencies:
+You can install the package using npm:
 
 ```bash
 npm install ts-easy-circuit-breaker
 ```
 
-## Usage
-
-### Import and Configure
-
-```typescript
-import {
-  CircuitBreaker,
-  CircuitBreakerOptions,
-  CircuitBreakerState,
-  CircuitState,
-} from "./CircuitBreaker";
-
-const options: CircuitBreakerOptions = {
-  failureThreshold: 0.5, // Failure threshold
-  timeWindow: 60000, // Time window in milliseconds (60 seconds)
-  resetTimeout: 30000, // Reset timeout in milliseconds (30 seconds)
-};
-
-const cb = new CircuitBreaker(options);
-```
-
-### Execute Functions with the Circuit Breaker
-
-```typescript
-const testFunction = async () => {
-  // Simulate a function that might fail
-  if (Math.random() > 0.5) {
-    throw new Error("Test error");
-  }
-  return "Success";
-};
-
-cb.execute(testFunction)
-  .then((result) => console.log(result))
-  .catch((error) => console.error(error.message));
-```
-
-### Handle Events
-
-```typescript
-cb.on("success", () => console.log("Successful execution"));
-cb.on("failure", () => console.log("Failed execution"));
-cb.on("openCircuit", () => console.log("Circuit is open"));
-cb.on("halfOpen", () => console.log("Circuit is half-open"));
-cb.on("closeCircuit", () => console.log("Circuit is closed"));
-```
-
-### Export the Circuit Breaker State
-
-```typescript
-const state = cb.exportState();
-console.log(state);
-```
-
-### Using in Stateless Environment
-
-You can initialize the Circuit Breaker with the state from another instance, which is useful in stateless environments:
-
-```typescript
-const initialState: CircuitBreakerState = {
-  state: CircuitState.CLOSED,
-  failureCount: 0,
-  successCount: 0,
-  lastFailureTime: 0,
-  nextAttempt: 0,
-};
-
-const cbWithState = new CircuitBreaker(options, initialState);
-```
-
-## Tests
-
-The project uses Jest for testing. You can run the tests with the following command:
+Or using yarn:
 
 ```bash
-npm test
+yarn add ts-easy-circuit-breaker
 ```
+
+## Usage
+
+Here's a basic example of how to use the Circuit Breaker:
+
+```typescript
+import { CircuitBreaker } from "ts-easy-circuit-breaker";
+
+const breaker = new CircuitBreaker({
+  failureThreshold: 0.5,
+  timeWindow: 10000,
+  resetTimeout: 30000,
+  minAttempts: 5,
+  minFailures: 3,
+});
+
+async function makeHttpRequest() {
+  // Your HTTP request logic here
+}
+
+try {
+  const result = await breaker.execute(makeHttpRequest);
+  console.log("Request successful:", result);
+} catch (error) {
+  if (error instanceof CircuitBreakerOpenError) {
+    console.log("Circuit is open, request not made");
+  } else {
+    console.error("Request failed:", error);
+  }
+}
+```
+
+## API
+
+### `CircuitBreaker`
+
+The main class that implements the Circuit Breaker pattern.
+
+#### Constructor
+
+```typescript
+new CircuitBreaker(options: CircuitBreakerOptions)
+```
+
+#### Methods
+
+- `execute<T>(fn: (...args: any[]) => Promise<T>, ...args: any[]): Promise<T>`
+  Executes the given function through the circuit breaker.
+
+- `exportState(): CircuitBreakerState`
+  Returns the current state of the circuit breaker.
+
+### `CircuitBreakerOpenError`
+
+An error class that is thrown when an execution is attempted while the circuit is open.
+
+## Configuration
+
+The `CircuitBreaker` constructor accepts an options object with the following properties:
+
+- `failureThreshold`: The failure rate threshold above which the circuit should open. (0 to 1)
+- `timeWindow`: The time window in milliseconds over which the failure threshold is calculated.
+- `resetTimeout`: The time in milliseconds after which to attempt closing the circuit.
+- `minAttempts`: (Optional) The minimum number of attempts before the failure threshold is considered. Default is 5.
+- `minFailures`: (Optional) The minimum number of failures required to open the circuit, regardless of the failure rate. Default is 3.
+
+## Initial State and Serverless Environments
+
+The `CircuitBreaker` constructor also accepts an optional `initialState` parameter, which is particularly useful in serverless environments where the state needs to be persisted externally (e.g., in Redis) between function invocations.
+
+Here's an example of how to use the `initialState`:
+
+```typescript
+import { CircuitBreaker, CircuitState } from "ts-easy-circuit-breaker";
+
+// Assume this function retrieves the state from an external store (e.g., Redis)
+async function getStateFromExternalStore() {
+  // Implementation to fetch state from external store
+}
+
+// Assume this function saves the state to an external store
+async function saveStateToExternalStore(state: CircuitBreakerState) {
+  // Implementation to save state to external store
+}
+
+async function initializeCircuitBreaker() {
+  const options = {
+    failureThreshold: 0.5,
+    timeWindow: 10000,
+    resetTimeout: 30000,
+    minAttempts: 5,
+    minFailures: 3,
+  };
+
+  const savedState = await getStateFromExternalStore();
+
+  const circuitBreaker = new CircuitBreaker(options, savedState);
+
+  // Optionally, you can listen for state changes and save the new state
+  circuitBreaker.on("stateChanged", async (newState) => {
+    await saveStateToExternalStore(newState);
+  });
+
+  return circuitBreaker;
+}
+
+// Usage in a serverless function
+export async function handler(event, context) {
+  const circuitBreaker = await initializeCircuitBreaker();
+
+  try {
+    const result = await circuitBreaker.execute(async () => {
+      // Your protected operation here
+    });
+    return { statusCode: 200, body: JSON.stringify(result) };
+  } catch (error) {
+    if (error instanceof CircuitBreakerOpenError) {
+      return { statusCode: 503, body: "Service temporarily unavailable" };
+    }
+    return { statusCode: 500, body: "Internal server error" };
+  }
+}
+```
+
+In this example, the Circuit Breaker's state is retrieved from an external store (like Redis) at the beginning of each serverless function invocation. This allows the Circuit Breaker to maintain its state across multiple invocations, which is crucial in serverless environments where the execution context is not preserved between invocations.
+
+The `initialState` object should have the following structure:
+
+```typescript
+interface CircuitBreakerState {
+  state: CircuitState;
+  failureCount: number;
+  successCount: number;
+  firstFailureTime: number;
+  lastFailureTime: number;
+  nextAttempt: number;
+}
+```
+
+By using this approach, you can ensure that your Circuit Breaker behaves consistently in serverless environments, properly tracking failures and successes across multiple function invocations.
+
+## Events
+
+The Circuit Breaker emits the following events:
+
+- `'openCircuit'`: Emitted when the circuit opens.
+- `'closeCircuit'`: Emitted when the circuit closes.
+- `'halfOpen'`: Emitted when the circuit transitions to the half-open state.
+- `'success'`: Emitted on successful execution.
+- `'failure'`: Emitted on failed execution.
+
+You can listen to these events like this:
+
+```typescript
+breaker.on("openCircuit", () => {
+  console.log("Circuit opened");
+});
+```
+
+## Examples
+
+### HTTP Request Wrapper with Minimum Failures
+
+```typescript
+import { CircuitBreaker } from "ts-easy-circuit-breaker";
+import axios from "axios";
+
+const breaker = new CircuitBreaker({
+  failureThreshold: 0.5,
+  timeWindow: 10000,
+  resetTimeout: 30000,
+  minAttempts: 10,
+  minFailures: 5,
+});
+
+async function makeRequest(url: string) {
+  return breaker.execute(async () => {
+    const response = await axios.get(url);
+    return response.data;
+  });
+}
+
+// Usage
+try {
+  const data = await makeRequest("https://api.example.com/data");
+  console.log(data);
+} catch (error) {
+  console.error("Request failed:", error);
+}
+```
+
+In this example, the circuit will only open if there have been at least 5 failures, the failure rate is 50% or higher, and there have been at least 10 attempts within the 10-second time window.
 
 ## Contributing
 
-1. Fork the project.
-2. Create a new branch (`git checkout -b feature-xyz`).
-3. Make your changes and commit them (`git commit -am 'Add new feature'`).
-4. Push your branch (`git push origin feature-xyz`).
-5. Open a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License.

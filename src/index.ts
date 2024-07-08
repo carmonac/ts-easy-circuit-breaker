@@ -10,22 +10,35 @@ interface CircuitBreakerOptions {
   failureThreshold: number;
   timeWindow: number;
   resetTimeout: number;
+  minAttempts?: number;
+  minFailures?: number;
 }
 
 interface CircuitBreakerState {
   state: CircuitState;
   failureCount: number;
   successCount: number;
+  firstFailureTime: number;
   lastFailureTime: number;
   nextAttempt: number;
+}
+
+class CircuitBreakerOpenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CircuitBreakerOpenError";
+  }
 }
 
 class CircuitBreaker extends EventEmitter {
   private state: CircuitState;
   private failureCount: number;
   private successCount: number;
+  private firstFailureTime: number;
   private lastFailureTime: number;
   private nextAttempt: number;
+  private minAttempts: number;
+  private minFailures: number;
   private readonly failureThreshold: number;
   private readonly timeWindow: number;
   private readonly resetTimeout: number;
@@ -38,32 +51,35 @@ class CircuitBreaker extends EventEmitter {
     this.failureThreshold = options.failureThreshold;
     this.timeWindow = options.timeWindow;
     this.resetTimeout = options.resetTimeout;
+    this.minAttempts = options.minAttempts || 5;
+    this.minFailures = options.minFailures || 3;
 
-    if (initialState) {
-      this.state = initialState.state;
-      this.failureCount = initialState.failureCount;
-      this.successCount = initialState.successCount;
-      this.lastFailureTime = initialState.lastFailureTime;
-      this.nextAttempt = initialState.nextAttempt;
-    } else {
-      this.state = CircuitState.CLOSED;
-      this.failureCount = 0;
-      this.successCount = 0;
-      this.lastFailureTime = 0;
-      this.nextAttempt = 0;
-    }
+    this.state = initialState?.state || CircuitState.CLOSED;
+    this.failureCount = initialState?.failureCount || 0;
+    this.successCount = initialState?.successCount || 0;
+    this.firstFailureTime = initialState?.firstFailureTime || 0;
+    this.lastFailureTime = initialState?.lastFailureTime || 0;
+    this.nextAttempt = initialState?.nextAttempt || 0;
+  }
+
+  private resetState(): void {
+    this.state = CircuitState.CLOSED;
+    this.failureCount = 0;
+    this.successCount = 0;
+    this.firstFailureTime = 0;
+    this.lastFailureTime = 0;
+    this.nextAttempt = 0;
   }
 
   async execute<T>(
     fn: (...args: any[]) => Promise<T>,
     ...args: any[]
   ): Promise<T> {
+    this.checkState();
+
     if (this.state === CircuitState.OPEN) {
-      if (Date.now() < this.nextAttempt) {
-        this.emit("openCircuit");
-        throw new Error("Circuit is OPEN");
-      }
-      this.toHalfOpen();
+      this.emit("openCircuit");
+      throw new CircuitBreakerOpenError("Circuit is OPEN");
     }
 
     try {
@@ -76,6 +92,19 @@ class CircuitBreaker extends EventEmitter {
     }
   }
 
+  private checkState(): void {
+    const now = Date.now();
+    if (this.state === CircuitState.OPEN && now >= this.nextAttempt) {
+      this.toHalfOpen();
+    } else if (
+      this.state === CircuitState.CLOSED &&
+      this.firstFailureTime !== 0 &&
+      now - this.firstFailureTime > this.timeWindow
+    ) {
+      this.resetState();
+    }
+  }
+
   private onSuccess(): void {
     this.successCount++;
     if (this.state === CircuitState.HALF_OPEN) {
@@ -85,12 +114,20 @@ class CircuitBreaker extends EventEmitter {
   }
 
   private onFailure(): void {
+    const now = Date.now();
     this.failureCount++;
-    this.lastFailureTime = Date.now();
+    this.lastFailureTime = now;
 
     if (this.state === CircuitState.CLOSED) {
+      if (this.firstFailureTime === 0) {
+        this.firstFailureTime = now;
+      }
       if (this.isThresholdExceeded()) {
         this.toOpen();
+      } else if (now - this.firstFailureTime > this.timeWindow) {
+        this.resetState();
+        this.firstFailureTime = now;
+        this.failureCount = 1;
       }
     } else if (this.state === CircuitState.HALF_OPEN) {
       this.toOpen();
@@ -100,12 +137,14 @@ class CircuitBreaker extends EventEmitter {
   }
 
   private isThresholdExceeded(): boolean {
+    const now = Date.now();
     const totalAttempts = this.failureCount + this.successCount;
     const failureRate = this.failureCount / totalAttempts;
     return (
       failureRate >= this.failureThreshold &&
-      totalAttempts >= 3 / this.failureThreshold &&
-      Date.now() <= this.lastFailureTime + this.timeWindow
+      totalAttempts >= this.minAttempts &&
+      this.failureCount >= this.minFailures &&
+      now < this.firstFailureTime + this.timeWindow
     );
   }
 
@@ -123,11 +162,7 @@ class CircuitBreaker extends EventEmitter {
   }
 
   private toClose(): void {
-    this.state = CircuitState.CLOSED;
-    this.failureCount = 0;
-    this.successCount = 0;
-    this.lastFailureTime = 0;
-    this.nextAttempt = 0;
+    this.resetState();
     this.emit("closeCircuit");
   }
 
@@ -136,6 +171,7 @@ class CircuitBreaker extends EventEmitter {
       state: this.state,
       failureCount: this.failureCount,
       successCount: this.successCount,
+      firstFailureTime: this.firstFailureTime,
       lastFailureTime: this.lastFailureTime,
       nextAttempt: this.nextAttempt,
     };
@@ -147,4 +183,5 @@ export {
   CircuitBreakerOptions,
   CircuitBreakerState,
   CircuitState,
+  CircuitBreakerOpenError,
 };
