@@ -12,6 +12,7 @@ interface CircuitBreakerOptions {
   resetTimeout: number;
   minAttempts?: number;
   minFailures?: number;
+  minEvaluationTime?: number;
 }
 
 interface CircuitBreakerState {
@@ -39,6 +40,7 @@ class CircuitBreaker extends EventEmitter {
   private nextAttempt: number;
   private minAttempts: number;
   private minFailures: number;
+  private readonly minEvaluationTime: number;
   private readonly failureThreshold: number;
   private readonly timeWindow: number;
   private readonly resetTimeout: number;
@@ -53,6 +55,7 @@ class CircuitBreaker extends EventEmitter {
     this.resetTimeout = options.resetTimeout;
     this.minAttempts = options.minAttempts || 5;
     this.minFailures = options.minFailures || 3;
+    this.minEvaluationTime = options.minEvaluationTime || 0;
 
     this.state = initialState?.state || CircuitState.CLOSED;
     this.failureCount = initialState?.failureCount || 0;
@@ -78,8 +81,10 @@ class CircuitBreaker extends EventEmitter {
     this.checkState();
 
     if (this.state === CircuitState.OPEN) {
-      this.emit("openCircuit");
-      throw new CircuitBreakerOpenError("Circuit is OPEN");
+      if (Date.now() < this.nextAttempt) {
+        this.emit("openCircuit");
+        throw new CircuitBreakerOpenError("Circuit is OPEN");
+      }
     }
 
     try {
@@ -124,10 +129,6 @@ class CircuitBreaker extends EventEmitter {
       }
       if (this.isThresholdExceeded()) {
         this.toOpen();
-      } else if (now - this.firstFailureTime > this.timeWindow) {
-        this.resetState();
-        this.firstFailureTime = now;
-        this.failureCount = 1;
       }
     } else if (this.state === CircuitState.HALF_OPEN) {
       this.toOpen();
@@ -140,10 +141,13 @@ class CircuitBreaker extends EventEmitter {
     const now = Date.now();
     const totalAttempts = this.failureCount + this.successCount;
     const failureRate = this.failureCount / totalAttempts;
+    const timeElapsed = now - this.firstFailureTime;
+
     return (
+      this.failureCount >= this.minFailures &&
       failureRate >= this.failureThreshold &&
       totalAttempts >= this.minAttempts &&
-      this.failureCount >= this.minFailures &&
+      timeElapsed >= this.minEvaluationTime &&
       now < this.firstFailureTime + this.timeWindow
     );
   }

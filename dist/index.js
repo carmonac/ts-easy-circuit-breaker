@@ -35,6 +35,7 @@ class CircuitBreaker extends events_1.default {
         this.resetTimeout = options.resetTimeout;
         this.minAttempts = options.minAttempts || 5;
         this.minFailures = options.minFailures || 3;
+        this.minEvaluationTime = options.minEvaluationTime || 0;
         this.state = (initialState === null || initialState === void 0 ? void 0 : initialState.state) || CircuitState.CLOSED;
         this.failureCount = (initialState === null || initialState === void 0 ? void 0 : initialState.failureCount) || 0;
         this.successCount = (initialState === null || initialState === void 0 ? void 0 : initialState.successCount) || 0;
@@ -54,8 +55,10 @@ class CircuitBreaker extends events_1.default {
         return __awaiter(this, void 0, void 0, function* () {
             this.checkState();
             if (this.state === CircuitState.OPEN) {
-                this.emit("openCircuit");
-                throw new CircuitBreakerOpenError("Circuit is OPEN");
+                if (Date.now() < this.nextAttempt) {
+                    this.emit("openCircuit");
+                    throw new CircuitBreakerOpenError("Circuit is OPEN");
+                }
             }
             try {
                 const result = yield fn(...args);
@@ -97,11 +100,6 @@ class CircuitBreaker extends events_1.default {
             if (this.isThresholdExceeded()) {
                 this.toOpen();
             }
-            else if (now - this.firstFailureTime > this.timeWindow) {
-                this.resetState();
-                this.firstFailureTime = now;
-                this.failureCount = 1;
-            }
         }
         else if (this.state === CircuitState.HALF_OPEN) {
             this.toOpen();
@@ -112,9 +110,11 @@ class CircuitBreaker extends events_1.default {
         const now = Date.now();
         const totalAttempts = this.failureCount + this.successCount;
         const failureRate = this.failureCount / totalAttempts;
-        return (failureRate >= this.failureThreshold &&
+        const timeElapsed = now - this.firstFailureTime;
+        return (this.failureCount >= this.minFailures &&
+            failureRate >= this.failureThreshold &&
             totalAttempts >= this.minAttempts &&
-            this.failureCount >= this.minFailures &&
+            timeElapsed >= this.minEvaluationTime &&
             now < this.firstFailureTime + this.timeWindow);
     }
     toOpen() {

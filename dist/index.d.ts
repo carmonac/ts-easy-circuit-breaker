@@ -10,6 +10,7 @@ interface CircuitBreakerOptions {
     resetTimeout: number;
     minAttempts?: number;
     minFailures?: number;
+    minEvaluationTime?: number;
 }
 interface CircuitBreakerState {
     state: CircuitState;
@@ -31,6 +32,7 @@ declare class CircuitBreaker extends EventEmitter {
     private nextAttempt;
     private minAttempts;
     private minFailures;
+    private readonly minEvaluationTime;
     private readonly failureThreshold;
     private readonly timeWindow;
     private readonly resetTimeout;

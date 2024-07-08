@@ -92,6 +92,7 @@ The `CircuitBreaker` constructor accepts an options object with the following pr
 - `resetTimeout`: The time in milliseconds after which to attempt closing the circuit.
 - `minAttempts`: (Optional) The minimum number of attempts before the failure threshold is considered. Default is 5.
 - `minFailures`: (Optional) The minimum number of failures required to open the circuit, regardless of the failure rate. Default is 3.
+- `minEvaluationTime`: (Optional) The minimum time in milliseconds that must pass since the first failure before the circuit breaker starts evaluating whether to open. Default is 15ms.
 
 ## Initial State and Serverless Environments
 
@@ -119,6 +120,7 @@ async function initializeCircuitBreaker() {
     resetTimeout: 30000,
     minAttempts: 5,
     minFailures: 3,
+    minEvaluationTime: 5000,
   };
 
   const savedState = await getStateFromExternalStore();
