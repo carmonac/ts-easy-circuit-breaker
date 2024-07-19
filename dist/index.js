@@ -81,6 +81,10 @@ class CircuitBreaker extends events_1.default {
             now - this.firstFailureTime > this.timeWindow) {
             this.resetState();
         }
+        if (this.successCount === Number.MAX_SAFE_INTEGER ||
+            this.failureCount === Number.MAX_SAFE_INTEGER) {
+            this.resetState();
+        }
     }
     onSuccess() {
         this.successCount++;

@@ -24,7 +24,6 @@ const server = http.createServer(async (req, res) => {
           const response = await axios.get(url);
           return response.data;
         });
-
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
       } catch (error: any) {
@@ -35,6 +34,8 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: error.message }));
         }
+      } finally {
+        console.log(circuitBreaker.exportState());
       }
     });
   } else {

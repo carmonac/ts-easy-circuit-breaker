@@ -108,6 +108,12 @@ class CircuitBreaker extends EventEmitter {
     ) {
       this.resetState();
     }
+    if (
+      this.successCount === Number.MAX_SAFE_INTEGER ||
+      this.failureCount === Number.MAX_SAFE_INTEGER
+    ) {
+      this.resetState();
+    }
   }
 
   private onSuccess(): void {
