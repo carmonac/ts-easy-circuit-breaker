@@ -19,6 +19,7 @@ describe("CircuitBreaker", () => {
         timeWindow: 10000,
         resetTimeout: 30000,
         minAttempts: 5,
+        maxFailureCount: 10,
       });
     });
 
@@ -95,7 +96,6 @@ describe("CircuitBreaker", () => {
 
       jest.advanceTimersByTime(30000);
 
-      // Ahora está en estado HALF_OPEN
       await expect(circuitBreaker.execute(mockFailedOperation)).rejects.toThrow(
         "failure"
       );
@@ -155,6 +155,51 @@ describe("CircuitBreaker", () => {
       await circuitBreaker.execute(mockSuccessfulOperation);
       expect(halfOpenMock).toHaveBeenCalledTimes(1);
       expect(closeCircuitMock).toHaveBeenCalledTimes(1);
+    });
+
+    test("should respect maxFailureCount", async () => {
+      let failureCount = 0;
+      let openCircuitThrown = false;
+
+      while (failureCount < 10 && !openCircuitThrown) {
+        try {
+          await circuitBreaker.execute(mockFailedOperation);
+          failureCount++;
+        } catch (error) {
+          if (error instanceof CircuitBreakerOpenError) {
+            openCircuitThrown = true;
+          } else {
+            failureCount++;
+          }
+        }
+      }
+
+      expect(openCircuitThrown).toBe(true);
+      expect(circuitBreaker.exportState().state).toBe(CircuitState.OPEN);
+
+      await expect(circuitBreaker.execute(mockFailedOperation)).rejects.toThrow(
+        CircuitBreakerOpenError
+      );
+    });
+
+    test("should return correct state with getState method", async () => {
+      expect(circuitBreaker.getState()).toBe(CircuitState.CLOSED);
+
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          circuitBreaker.execute(mockFailedOperation)
+        ).rejects.toThrow("failure");
+      }
+      expect(circuitBreaker.getState()).toBe(CircuitState.OPEN);
+
+      jest.advanceTimersByTime(30000);
+
+      expect(circuitBreaker.getState()).toBe(CircuitState.OPEN);
+
+      await expect(
+        circuitBreaker.execute(mockSuccessfulOperation)
+      ).resolves.toBe("success");
+      expect(circuitBreaker.getState()).toBe(CircuitState.CLOSED);
     });
   });
 

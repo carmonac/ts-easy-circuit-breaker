@@ -36,6 +36,7 @@ class CircuitBreaker extends events_1.default {
         this.minAttempts = options.minAttempts || 5;
         this.minFailures = options.minFailures || 3;
         this.minEvaluationTime = options.minEvaluationTime || 0;
+        this.maxFailureCount = options.maxFailureCount || Number.MAX_SAFE_INTEGER;
         this.state = (initialState === null || initialState === void 0 ? void 0 : initialState.state) || CircuitState.CLOSED;
         this.failureCount = (initialState === null || initialState === void 0 ? void 0 : initialState.failureCount) || 0;
         this.successCount = (initialState === null || initialState === void 0 ? void 0 : initialState.successCount) || 0;
@@ -81,8 +82,8 @@ class CircuitBreaker extends events_1.default {
             now - this.firstFailureTime > this.timeWindow) {
             this.resetState();
         }
-        if (this.successCount === Number.MAX_SAFE_INTEGER ||
-            this.failureCount === Number.MAX_SAFE_INTEGER) {
+        if (this.successCount >= Number.MAX_SAFE_INTEGER ||
+            this.failureCount >= this.maxFailureCount) {
             this.resetState();
         }
     }
@@ -91,7 +92,7 @@ class CircuitBreaker extends events_1.default {
         if (this.state === CircuitState.HALF_OPEN) {
             this.toClose();
         }
-        this.emit("success");
+        this.emit("success", { successCount: this.successCount });
     }
     onFailure() {
         const now = Date.now();
@@ -108,7 +109,7 @@ class CircuitBreaker extends events_1.default {
         else if (this.state === CircuitState.HALF_OPEN) {
             this.toOpen();
         }
-        this.emit("failure");
+        this.emit("failure", { failureCount: this.failureCount });
     }
     isThresholdExceeded() {
         const now = Date.now();
@@ -124,7 +125,7 @@ class CircuitBreaker extends events_1.default {
     toOpen() {
         this.state = CircuitState.OPEN;
         this.nextAttempt = Date.now() + this.resetTimeout;
-        this.emit("openCircuit");
+        this.emit("openCircuit", { nextAttempt: this.nextAttempt });
     }
     toHalfOpen() {
         this.state = CircuitState.HALF_OPEN;
@@ -135,6 +136,9 @@ class CircuitBreaker extends events_1.default {
     toClose() {
         this.resetState();
         this.emit("closeCircuit");
+    }
+    getState() {
+        return this.state;
     }
     exportState() {
         return {

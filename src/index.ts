@@ -13,6 +13,7 @@ interface CircuitBreakerOptions {
   minAttempts?: number;
   minFailures?: number;
   minEvaluationTime?: number;
+  maxFailureCount?: number;
 }
 
 interface CircuitBreakerState {
@@ -44,6 +45,7 @@ class CircuitBreaker extends EventEmitter {
   private readonly failureThreshold: number;
   private readonly timeWindow: number;
   private readonly resetTimeout: number;
+  private readonly maxFailureCount: number;
 
   constructor(
     options: CircuitBreakerOptions,
@@ -56,6 +58,7 @@ class CircuitBreaker extends EventEmitter {
     this.minAttempts = options.minAttempts || 5;
     this.minFailures = options.minFailures || 3;
     this.minEvaluationTime = options.minEvaluationTime || 0;
+    this.maxFailureCount = options.maxFailureCount || Number.MAX_SAFE_INTEGER;
 
     this.state = initialState?.state || CircuitState.CLOSED;
     this.failureCount = initialState?.failureCount || 0;
@@ -109,8 +112,8 @@ class CircuitBreaker extends EventEmitter {
       this.resetState();
     }
     if (
-      this.successCount === Number.MAX_SAFE_INTEGER ||
-      this.failureCount === Number.MAX_SAFE_INTEGER
+      this.successCount >= Number.MAX_SAFE_INTEGER ||
+      this.failureCount >= this.maxFailureCount
     ) {
       this.resetState();
     }
@@ -121,7 +124,7 @@ class CircuitBreaker extends EventEmitter {
     if (this.state === CircuitState.HALF_OPEN) {
       this.toClose();
     }
-    this.emit("success");
+    this.emit("success", { successCount: this.successCount });
   }
 
   private onFailure(): void {
@@ -140,7 +143,7 @@ class CircuitBreaker extends EventEmitter {
       this.toOpen();
     }
 
-    this.emit("failure");
+    this.emit("failure", { failureCount: this.failureCount });
   }
 
   private isThresholdExceeded(): boolean {
@@ -161,7 +164,7 @@ class CircuitBreaker extends EventEmitter {
   private toOpen(): void {
     this.state = CircuitState.OPEN;
     this.nextAttempt = Date.now() + this.resetTimeout;
-    this.emit("openCircuit");
+    this.emit("openCircuit", { nextAttempt: this.nextAttempt });
   }
 
   private toHalfOpen(): void {
@@ -174,6 +177,10 @@ class CircuitBreaker extends EventEmitter {
   private toClose(): void {
     this.resetState();
     this.emit("closeCircuit");
+  }
+
+  getState(): CircuitState {
+    return this.state;
   }
 
   exportState(): CircuitBreakerState {

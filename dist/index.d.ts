@@ -11,6 +11,7 @@ interface CircuitBreakerOptions {
     minAttempts?: number;
     minFailures?: number;
     minEvaluationTime?: number;
+    maxFailureCount?: number;
 }
 interface CircuitBreakerState {
     state: CircuitState;
@@ -36,6 +37,7 @@ declare class CircuitBreaker extends EventEmitter {
     private readonly failureThreshold;
     private readonly timeWindow;
     private readonly resetTimeout;
+    private readonly maxFailureCount;
     constructor(options: CircuitBreakerOptions, initialState?: CircuitBreakerState);
     private resetState;
     execute<T>(fn: (...args: any[]) => Promise<T>, ...args: any[]): Promise<T>;
@@ -46,6 +48,7 @@ declare class CircuitBreaker extends EventEmitter {
     private toOpen;
     private toHalfOpen;
     private toClose;
+    getState(): CircuitState;
     exportState(): CircuitBreakerState;
 }
 export { CircuitBreaker, CircuitBreakerOptions, CircuitBreakerState, CircuitState, CircuitBreakerOpenError, };
