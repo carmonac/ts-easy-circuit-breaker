@@ -23,6 +23,7 @@ interface CircuitBreakerState {
   firstFailureTime: number;
   lastFailureTime: number;
   nextAttempt: number;
+  halfOpenRequestPending?: boolean;
 }
 
 class CircuitBreakerOpenError extends Error {
@@ -41,6 +42,7 @@ class CircuitBreaker extends EventEmitter {
   private nextAttempt: number;
   private minAttempts: number;
   private minFailures: number;
+  private halfOpenRequestPending: boolean;
   private readonly minEvaluationTime: number;
   private readonly failureThreshold: number;
   private readonly timeWindow: number;
@@ -58,7 +60,8 @@ class CircuitBreaker extends EventEmitter {
     this.minAttempts = options.minAttempts || 5;
     this.minFailures = options.minFailures || 3;
     this.minEvaluationTime = options.minEvaluationTime || 0;
-    this.maxFailureCount = options.maxFailureCount || Number.MAX_SAFE_INTEGER;
+    this.maxFailureCount =
+      options.maxFailureCount || Number.MAX_SAFE_INTEGER - 100000000;
 
     this.state = initialState?.state || CircuitState.CLOSED;
     this.failureCount = initialState?.failureCount || 0;
@@ -66,6 +69,7 @@ class CircuitBreaker extends EventEmitter {
     this.firstFailureTime = initialState?.firstFailureTime || 0;
     this.lastFailureTime = initialState?.lastFailureTime || 0;
     this.nextAttempt = initialState?.nextAttempt || 0;
+    this.halfOpenRequestPending = initialState?.halfOpenRequestPending || false;
   }
 
   private resetState(): void {
@@ -75,6 +79,7 @@ class CircuitBreaker extends EventEmitter {
     this.firstFailureTime = 0;
     this.lastFailureTime = 0;
     this.nextAttempt = 0;
+    this.halfOpenRequestPending = false;
   }
 
   async execute<T>(
@@ -88,6 +93,12 @@ class CircuitBreaker extends EventEmitter {
         this.emit("openCircuit");
         throw new CircuitBreakerOpenError("Circuit is OPEN");
       }
+    } else if (this.state === CircuitState.HALF_OPEN) {
+      if (this.halfOpenRequestPending) {
+        this.emit("halfOpen");
+        throw new CircuitBreakerOpenError("Half-open request pending");
+      }
+      this.halfOpenRequestPending = true;
     }
 
     try {
@@ -97,6 +108,10 @@ class CircuitBreaker extends EventEmitter {
     } catch (error) {
       this.onFailure();
       throw error;
+    } finally {
+      if (this.state === CircuitState.HALF_OPEN) {
+        this.halfOpenRequestPending = false;
+      }
     }
   }
 
@@ -135,6 +150,7 @@ class CircuitBreaker extends EventEmitter {
     if (this.state === CircuitState.CLOSED) {
       if (this.firstFailureTime === 0) {
         this.firstFailureTime = now;
+        this.successCount = 0;
       }
       if (this.isThresholdExceeded()) {
         this.toOpen();
@@ -191,6 +207,7 @@ class CircuitBreaker extends EventEmitter {
       firstFailureTime: this.firstFailureTime,
       lastFailureTime: this.lastFailureTime,
       nextAttempt: this.nextAttempt,
+      halfOpenRequestPending: this.halfOpenRequestPending,
     };
   }
 }

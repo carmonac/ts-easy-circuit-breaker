@@ -36,13 +36,15 @@ class CircuitBreaker extends events_1.default {
         this.minAttempts = options.minAttempts || 5;
         this.minFailures = options.minFailures || 3;
         this.minEvaluationTime = options.minEvaluationTime || 0;
-        this.maxFailureCount = options.maxFailureCount || Number.MAX_SAFE_INTEGER;
+        this.maxFailureCount =
+            options.maxFailureCount || Number.MAX_SAFE_INTEGER - 100000000;
         this.state = (initialState === null || initialState === void 0 ? void 0 : initialState.state) || CircuitState.CLOSED;
         this.failureCount = (initialState === null || initialState === void 0 ? void 0 : initialState.failureCount) || 0;
         this.successCount = (initialState === null || initialState === void 0 ? void 0 : initialState.successCount) || 0;
         this.firstFailureTime = (initialState === null || initialState === void 0 ? void 0 : initialState.firstFailureTime) || 0;
         this.lastFailureTime = (initialState === null || initialState === void 0 ? void 0 : initialState.lastFailureTime) || 0;
         this.nextAttempt = (initialState === null || initialState === void 0 ? void 0 : initialState.nextAttempt) || 0;
+        this.halfOpenRequestPending = (initialState === null || initialState === void 0 ? void 0 : initialState.halfOpenRequestPending) || false;
     }
     resetState() {
         this.state = CircuitState.CLOSED;
@@ -51,6 +53,7 @@ class CircuitBreaker extends events_1.default {
         this.firstFailureTime = 0;
         this.lastFailureTime = 0;
         this.nextAttempt = 0;
+        this.halfOpenRequestPending = false;
     }
     execute(fn, ...args) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -61,6 +64,13 @@ class CircuitBreaker extends events_1.default {
                     throw new CircuitBreakerOpenError("Circuit is OPEN");
                 }
             }
+            else if (this.state === CircuitState.HALF_OPEN) {
+                if (this.halfOpenRequestPending) {
+                    this.emit("halfOpen");
+                    throw new CircuitBreakerOpenError("Half-open request pending");
+                }
+                this.halfOpenRequestPending = true;
+            }
             try {
                 const result = yield fn(...args);
                 this.onSuccess();
@@ -69,6 +79,11 @@ class CircuitBreaker extends events_1.default {
             catch (error) {
                 this.onFailure();
                 throw error;
+            }
+            finally {
+                if (this.state === CircuitState.HALF_OPEN) {
+                    this.halfOpenRequestPending = false;
+                }
             }
         });
     }
@@ -101,6 +116,7 @@ class CircuitBreaker extends events_1.default {
         if (this.state === CircuitState.CLOSED) {
             if (this.firstFailureTime === 0) {
                 this.firstFailureTime = now;
+                this.successCount = 0;
             }
             if (this.isThresholdExceeded()) {
                 this.toOpen();
@@ -148,6 +164,7 @@ class CircuitBreaker extends events_1.default {
             firstFailureTime: this.firstFailureTime,
             lastFailureTime: this.lastFailureTime,
             nextAttempt: this.nextAttempt,
+            halfOpenRequestPending: this.halfOpenRequestPending,
         };
     }
 }

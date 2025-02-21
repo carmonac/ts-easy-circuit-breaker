@@ -20,6 +20,7 @@ interface CircuitBreakerState {
     firstFailureTime: number;
     lastFailureTime: number;
     nextAttempt: number;
+    halfOpenRequestPending?: boolean;
 }
 declare class CircuitBreakerOpenError extends Error {
     constructor(message: string);
@@ -33,6 +34,7 @@ declare class CircuitBreaker extends EventEmitter {
     private nextAttempt;
     private minAttempts;
     private minFailures;
+    private halfOpenRequestPending;
     private readonly minEvaluationTime;
     private readonly failureThreshold;
     private readonly timeWindow;
